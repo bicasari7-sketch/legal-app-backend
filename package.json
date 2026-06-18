@@ -1,0 +1,24 @@
+{
+  "name": "legal-app-backend",
+  "version": "2.0.0",
+  "description": "Backend para app de processos jurídicos com MongoDB",
+  "main": "server_mongodb.js",
+  "scripts": {
+    "start": "node server_mongodb.js",
+    "dev": "node server_mongodb.js"
+  },
+  "keywords": [
+    "cnj",
+    "legal",
+    "processos",
+    "mongodb"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "mongoose": "^7.0.0",
+    "axios": "^1.3.0"
+  }
+}
