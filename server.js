@@ -105,28 +105,19 @@ app.post('/api/search-process', async (req, res) => {
 // Buscar na CNJ (API Real Gratuita)
 async function searchCNJProcess(numero) {
   try {
-    // Montar URL da CNJ
-    const segmento = numero[8];
-    const tribunal = numero.substring(9, 11);
+    // Limpar número (remover formatação se tiver)
+    let cleanNumber = numero.replace(/\D/g, '');
     
-    const tribunalCNJ = {
-      '07': '0100002', // TRT-1
-      '08': '0100032', // TRT-2
-      '26': '0100386', // TJ-SP
-      '09': '0100110'  // TJ-MG
-    }[tribunal] || '0100002';
+    // Se tiver 20 dígitos, é o formato correto
+    if (cleanNumber.length !== 20) {
+      throw new Error('Número do processo deve ter 20 dígitos');
+    }
 
-    // Formatar para CNJ
-    const originNum = numero.substring(0, 7);
-    const yearNum = numero.substring(4, 8);
-    const segmentNum = segmento;
-    const courtNum = tribunal;
-    const originBase = numero.substring(14, 18);
+    // URL correta para CNJ (usando o número formatado)
+    const cnj_url = `https://www.cnj.jus.br/programas-e-acoes/numeracao-unica/json/?numero=${cleanNumber}`;
 
-    // Montar URL da CNJ
-    const cnj_url = `https://www.cnj.jus.br/programas-e-acoes/numeracao-unica/json/?numero=${originNum}${yearNum}${segmentNum}${courtNum}${originBase}`;
-
-    console.log('🔍 Buscando CNJ:', cnj_url);
+    console.log('🔍 Buscando CNJ com número:', cleanNumber);
+    console.log('🔍 URL:', cnj_url);
 
     const response = await axios.get(cnj_url, { timeout: 8000 });
     const cnj_data = response.data;
