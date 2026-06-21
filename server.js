@@ -437,6 +437,101 @@ app.post('/api/debug-process', async (req, res) => {
   }
 });
 
+// ============ CLIENTES ============
+
+app.get('/api/clients', async (req, res) => {
+  try {
+    const clients = await Client.find().sort({ createdAt: -1 });
+    res.json(clients);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/clients', async (req, res) => {
+  try {
+    const { name, email, token, id } = req.body;
+    const client = new Client({ id, name, email, token, createdAt: new Date().toLocaleDateString('pt-BR') });
+    await client.save();
+    res.json(client);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/clients/:id', async (req, res) => {
+  try {
+    await Client.deleteOne({ id: req.params.id });
+    await Process.deleteMany({ clientId: req.params.id });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Rota usada pelo cliente para login via token
+app.get('/api/clients/token/:token', async (req, res) => {
+  try {
+    const client = await Client.findOne({ token: req.params.token });
+    if (!client) return res.status(404).json({ error: 'Código inválido' });
+    res.json(client);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ PROCESSOS ============
+
+app.get('/api/processes', async (req, res) => {
+  try {
+    const processes = await Process.find().sort({ createdAt: -1 });
+    res.json(processes);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/processes/client/:clientId', async (req, res) => {
+  try {
+    const processes = await Process.find({ clientId: req.params.clientId });
+    res.json(processes);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/processes', async (req, res) => {
+  try {
+    const process = new Process(req.body);
+    await process.save();
+    res.json(process);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/processes/:id', async (req, res) => {
+  try {
+    const updated = await Process.findOneAndUpdate(
+      { id: req.params.id },
+      { $set: req.body },
+      { new: true }
+    );
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/processes/:id', async (req, res) => {
+  try {
+    await Process.deleteOne({ id: req.params.id });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============ LISTEN ============
 app.listen(PORT, () => {
   console.log(`✅ Backend rodando na porta ${PORT}`);
