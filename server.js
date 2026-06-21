@@ -148,11 +148,17 @@ async function searchDataJud(numero) {
   const grauLabel = resolveGrau(hit.grau);
   const emRecurso = ['G2', 'GR', 'SUP'].includes(hit.grau);
 
-  const movimentos = (hit.movimentos || []).map(m => ({
-    titulo: m.nome || 'Movimentação',
-    descricao: m.complementosTabelados?.[0]?.descricao || m.complementosLivres?.[0]?.descricao || '',
-    data: m.dataHora ? new Date(m.dataHora).toLocaleDateString('pt-BR') : ''
-  }));
+  const movimentos = (hit.movimentos || []).map(m => {
+    // complementosTabelados: { descricao = nome do campo, valor = valor real }
+    const complemento = m.complementosTabelados?.map(c => c.valor).filter(Boolean).join(' | ')
+      || m.complementosLivres?.map(c => c.descricao).filter(Boolean).join(' | ')
+      || '';
+    return {
+      titulo: m.nome || 'Movimentação',
+      descricao: complemento,
+      data: m.dataHora ? new Date(m.dataHora).toLocaleDateString('pt-BR') : ''
+    };
+  });
 
   const ultimoMovimento = movimentos.length > 0 ? movimentos[0] : null;
 
@@ -375,6 +381,38 @@ function generateNextSteps(hit) {
 
   return steps;
 }
+
+// ============ DEBUG — remover depois ============
+app.post('/api/debug-process', async (req, res) => {
+  try {
+    const { processNumber } = req.body;
+    const cleanNumber = processNumber.replace(/\D/g, '');
+    const tribunal_info = identifyTribunal(cleanNumber);
+    const sigla = tribunal_info.siglaApi;
+
+    const response = await axios.post(
+      `https://api-publica.datajud.cnj.jus.br/api_publica_${sigla}/_search`,
+      { query: { match: { numeroProcesso: cleanNumber } } },
+      {
+        headers: {
+          'Authorization': `APIKey ${DATAJUD_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      }
+    );
+
+    const hits = response.data?.hits?.hits || [];
+    // Retorna o _source bruto de todos os hits para inspeção
+    res.json(hits.map(h => ({
+      grau: h._source.grau,
+      partes: h._source.partes,
+      movimentos: h._source.movimentos?.slice(0, 3)
+    })));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // ============ LISTEN ============
 app.listen(PORT, () => {
