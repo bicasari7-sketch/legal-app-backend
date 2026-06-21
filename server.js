@@ -126,7 +126,7 @@ async function searchDataJud(numero) {
   }
 
   // Pode haver múltiplos hits (G1 e G2). Ordenar: G2 primeiro se existir.
-  const grauOrder = { 'G2': 0, 'GR': 1, 'G1': 2, 'JE': 3 };
+  const grauOrder = { 'TR': 0, 'G2': 1, 'GR': 2, 'G1': 3, 'JE': 4 };
   hits.sort((a, b) => (grauOrder[a._source.grau] ?? 99) - (grauOrder[b._source.grau] ?? 99));
 
   const hit = hits[0]._source;
@@ -146,11 +146,11 @@ async function searchDataJud(numero) {
   const defendant = partesPassivas.map(p => p.nome).filter(Boolean).join(', ') || 'Não informado';
 
   const grauLabel = resolveGrau(hit.grau);
-  const emRecurso = ['G2', 'GR', 'SUP'].includes(hit.grau);
+  const emRecurso = ['G2', 'GR', 'TR', 'SUP'].includes(hit.grau);
 
   const movimentos = (hit.movimentos || []).map(m => {
     // complementosTabelados: { descricao = nome do campo, valor = valor real }
-    const complemento = m.complementosTabelados?.map(c => c.valor).filter(Boolean).join(' | ')
+    const complemento = m.complementosTabelados?.map(c => c.nome).filter(Boolean).join(' | ')
       || m.complementosLivres?.map(c => c.descricao).filter(Boolean).join(' | ')
       || '';
     return {
@@ -193,6 +193,7 @@ function resolveGrau(grau) {
     'G2':  'Segundo Grau (Recurso)',
     'GR':  'Grau Recursal',
     'JE':  'Juizado Especial',
+    'TR':  'Turma Recursal (Recurso)',
     'SUP': 'Tribunal Superior'
   };
   return map[grau] || grau || 'Não informado';
