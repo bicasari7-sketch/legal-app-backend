@@ -125,12 +125,28 @@ async function searchDataJud(numero) {
     throw new Error(`Processo ${formatarNumeroProcesso(cleanNumber)} não encontrado no DataJud`);
   }
 
+  // Pode haver múltiplos hits (G1 e G2). Ordenar: G2 primeiro se existir.
+  const grauOrder = { 'G2': 0, 'GR': 1, 'G1': 2, 'JE': 3 };
+  hits.sort((a, b) => (grauOrder[a._source.grau] ?? 99) - (grauOrder[b._source.grau] ?? 99));
+
   const hit = hits[0]._source;
 
-  console.log('✅ DataJud OK');
+  console.log('✅ DataJud OK | grau:', hit.grau);
+  console.log('📦 Partes raw:', JSON.stringify(hit.partes));
 
-  const parteAtiva = hit.partes?.find(p => p.polo === 'ATIVO');
-  const partePassiva = hit.partes?.find(p => p.polo === 'PASSIVO');
+  // O polo pode vir como 'AT'/'PA' ou 'ATIVO'/'PASSIVO' dependendo do tribunal
+  const polosAtivo   = ['AT', 'ATIVO', 'Ativo', 'ativo', 'at'];
+  const polosPassivo = ['PA', 'PASSIVO', 'Passivo', 'passivo', 'pa', 'RE', 'REU', 'Réu'];
+
+  const partes = hit.partes || [];
+  const partesAtivas   = partes.filter(p => polosAtivo.includes(p.polo));
+  const partesPassivas = partes.filter(p => polosPassivo.includes(p.polo));
+
+  const plaintiff = partesAtivas.map(p => p.nome).filter(Boolean).join(', ') || 'Não informado';
+  const defendant = partesPassivas.map(p => p.nome).filter(Boolean).join(', ') || 'Não informado';
+
+  const grauLabel = resolveGrau(hit.grau);
+  const emRecurso = ['G2', 'GR', 'SUP'].includes(hit.grau);
 
   const movimentos = (hit.movimentos || []).map(m => ({
     titulo: m.nome || 'Movimentação',
@@ -147,10 +163,12 @@ async function searchDataJud(numero) {
     tribunalCompleto: tribunal_info.tribunal.completo,
     segmento: tribunal_info.segmento,
     tipo: hit.classeProcessual?.nome || 'Ação Judicial',
-    plaintiff: parteAtiva?.nome || 'Não informado',
-    defendant: partePassiva?.nome || 'Não informado',
+    plaintiff,
+    defendant,
     status: hit.nivelSigilo === 0 ? 'Público' : 'Sigiloso',
     currentPhase: hit.fase?.nome || 'Em Andamento',
+    grau: grauLabel,
+    emRecurso,
     judge: hit.orgaoJulgador?.nome || 'Não informado',
     summary: hit.assuntos?.[0]?.nome || 'Sem assunto informado',
     lastMovement: ultimoMovimento,
@@ -161,6 +179,17 @@ async function searchDataJud(numero) {
     processValue: hit.valorCausa ? `R$ ${Number(hit.valorCausa).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'Não informado',
     searchedAt: new Date().toISOString()
   };
+}
+
+function resolveGrau(grau) {
+  const map = {
+    'G1':  'Primeiro Grau',
+    'G2':  'Segundo Grau (Recurso)',
+    'GR':  'Grau Recursal',
+    'JE':  'Juizado Especial',
+    'SUP': 'Tribunal Superior'
+  };
+  return map[grau] || grau || 'Não informado';
 }
 
 // ============ FUNÇÕES AUXILIARES ============
