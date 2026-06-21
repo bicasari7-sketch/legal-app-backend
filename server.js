@@ -103,11 +103,21 @@ async function searchDataJud(numero) {
 
   const url = `https://api-publica.datajud.cnj.jus.br/api_publica_${sigla}/_search`;
 
+  const formatted = formatarNumeroProcesso(cleanNumber);
+
+  // DataJud pode indexar o número com ou sem formatação — tenta os dois
   const response = await axios.post(
     url,
     {
       query: {
-        match: { numeroProcesso: cleanNumber }
+        bool: {
+          should: [
+            { term: { numeroProcesso: cleanNumber } },
+            { term: { numeroProcesso: formatted } },
+            { match: { numeroProcesso: cleanNumber } }
+          ],
+          minimum_should_match: 1
+        }
       }
     },
     {
@@ -122,7 +132,7 @@ async function searchDataJud(numero) {
   const hits = response.data?.hits?.hits || [];
 
   if (hits.length === 0) {
-    throw new Error(`Processo ${formatarNumeroProcesso(cleanNumber)} não encontrado no DataJud`);
+    throw new Error(`Processo ${formatted} não encontrado no DataJud. Verifique se o número está correto e se o tribunal é ${sigla.toUpperCase()}.`);
   }
 
   // Pode haver múltiplos hits (G1 e G2). Ordenar: G2 primeiro se existir.
@@ -391,9 +401,21 @@ app.post('/api/debug-process', async (req, res) => {
     const tribunal_info = identifyTribunal(cleanNumber);
     const sigla = tribunal_info.siglaApi;
 
+    const formatted = formatarNumeroProcesso(cleanNumber);
     const response = await axios.post(
       `https://api-publica.datajud.cnj.jus.br/api_publica_${sigla}/_search`,
-      { query: { match: { numeroProcesso: cleanNumber } } },
+      {
+        query: {
+          bool: {
+            should: [
+              { term: { numeroProcesso: cleanNumber } },
+              { term: { numeroProcesso: formatted } },
+              { match: { numeroProcesso: cleanNumber } }
+            ],
+            minimum_should_match: 1
+          }
+        }
+      },
       {
         headers: {
           'Authorization': `APIKey ${DATAJUD_API_KEY}`,
