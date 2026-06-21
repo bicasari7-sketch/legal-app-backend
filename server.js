@@ -7,31 +7,19 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://user:password@cluster.mongodb.net/?retryWrites=true&w=majority';
 
-// ============ CORS CONFIGURADO CORRETAMENTE ============
-const corsOptions = {
-  origin: '*',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  maxAge: 3600
-};
-
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
-
+// ============ CORS ============
+app.use(cors());
 app.use(express.json());
 
 console.log('🚀 Backend iniciando...');
 
-// ============ MONGOOSE SCHEMAS ============
-
+// ============ SCHEMAS ============
 const clientSchema = new mongoose.Schema({
   id: String,
   name: String,
   email: String,
   token: String,
-  createdAt: String,
-  lawyerId: String
+  createdAt: String
 });
 
 const processSchema = new mongoose.Schema({
@@ -67,18 +55,16 @@ const Process = mongoose.model('Process', processSchema);
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('✅ MongoDB conectado'))
   .catch((err) => {
-    console.error('❌ Erro MongoDB:', err.message);
-    console.log('⚠️  Backend funcionando SEM MongoDB - dados não serão persistidos');
+    console.error('❌ MongoDB erro:', err.message);
   });
 
-// ============ HEALTH CHECK ============
+// ============ HEALTH ============
 app.get('/health', (req, res) => {
-  res.status(200).json({ 
+  res.json({ 
     status: 'ok', 
     version: '5.0',
     timestamp: new Date().toISOString(),
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    cors: 'enabled'
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
   });
 });
 
@@ -91,70 +77,65 @@ app.post('/api/search-process', async (req, res) => {
       return res.status(400).json({ error: 'Número do processo é obrigatório' });
     }
 
-    console.log('📋 Buscando processo:', processNumber);
+    console.log('📋 Buscando:', processNumber);
 
     const processData = await searchCNJProcess(processNumber);
-
-    res.status(200).json(processData);
+    res.json(processData);
   } catch (error) {
-    console.error('Erro:', error);
-    res.status(500).json({ error: 'Erro ao buscar processo', details: error.message });
+    console.error('❌ Erro:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
-// Buscar na CNJ (API Real Gratuita)
+// ============ BUSCAR NA CNJ ============
 async function searchCNJProcess(numero) {
   try {
-    // Limpar número (remover formatação se tiver)
+    // Limpar número
     let cleanNumber = numero.replace(/\D/g, '');
     
-    // Se tiver 20 dígitos, é o formato correto
     if (cleanNumber.length !== 20) {
-      throw new Error('Número do processo deve ter 20 dígitos');
+      throw new Error('Número deve ter 20 dígitos');
     }
 
-    // URL correta para CNJ (usando o número formatado)
+    // URL da CNJ
     const cnj_url = `https://www.cnj.jus.br/programas-e-acoes/numeracao-unica/json/?numero=${cleanNumber}`;
 
-    console.log('🔍 Buscando CNJ com número:', cleanNumber);
-    console.log('🔍 URL:', cnj_url);
+    console.log('🔍 CNJ:', cnj_url);
 
     const response = await axios.get(cnj_url, { timeout: 8000 });
-    const cnj_data = response.data;
+    const cnj_data = response.data || {};
 
-    console.log('✅ CNJ retornou:', JSON.stringify(cnj_data).substring(0, 200));
+    console.log('✅ CNJ OK');
 
-    // Processar dados da CNJ
+    // Processar
     const tribunal_info = identifyTribunal(numero);
-    const isTrabalhista = tribunal_info.segmento === 'Trabalhista';
 
-    // Montar resposta com dados reais da CNJ
     const processData = {
       numero: numero,
       formatado: formatarNumeroProcesso(numero),
       tribunal: tribunal_info.tribunal.nome,
       tribunalCompleto: tribunal_info.tribunal.completo,
       segmento: tribunal_info.segmento,
-      tipo: cnj_data.tipo || (isTrabalhista ? 'Ação Trabalhista' : 'Ação Civil'),
-      plaintiff: cnj_data.autores ? cnj_data.autores[0] : 'Parte Ativa',
-      defendant: cnj_data.reus ? cnj_data.reus[0] : 'Parte Passiva',
+      tipo: cnj_data.tipo || 'Ação Judicial',
+      plaintiff: cnj_data.autores ? cnj_data.autores[0] : 'Consultando...',
+      defendant: cnj_data.reus ? cnj_data.reus[0] : 'Consultando...',
       status: cnj_data.status || 'Em Andamento',
       currentPhase: extractPhase(cnj_data),
       judge: cnj_data.juiz || 'A definir',
-      summary: cnj_data.assunto || 'Consulte o portal do tribunal para mais detalhes',
+      summary: cnj_data.assunto || 'Dados da API pública do CNJ',
       lastMovement: extractLastMovement(cnj_data),
       movements: extractMovements(cnj_data),
       nextSteps: generateNextSteps(cnj_data),
       nextDeadline: extractNextDeadline(cnj_data),
-      nextDeadlineDescription: extractDeadlineDescription(cnj_data),
+      nextDeadlineDescription: 'Prazo a definir',
       processValue: cnj_data.valor_causa || 'Não informado',
       searchedAt: new Date().toISOString()
     };
 
     return processData;
   } catch (error) {
-    console.error('❌ Erro ao buscar CNJ:', error.message);
-    throw new Error(`Erro ao buscar processo na CNJ: ${error.message}`);
+    console.error('❌ CNJ erro:', error.message);
+    throw new Error(`Erro ao buscar na CNJ: ${error.message}`);
   }
 }
 
@@ -170,8 +151,8 @@ function identifyTribunal(numero) {
   const segmento_code = numero[8];
 
   const tribunals = {
-    '07': { nome: 'TRT-1', completo: 'Tribunal Regional do Trabalho - 1ª Região (São Paulo)' },
-    '08': { nome: 'TRT-2', completo: 'Tribunal Regional do Trabalho - 2ª Região (São Paulo)' },
+    '07': { nome: 'TRT-1', completo: 'Tribunal Regional do Trabalho - 1ª Região' },
+    '08': { nome: 'TRT-2', completo: 'Tribunal Regional do Trabalho - 2ª Região' },
     '26': { nome: 'TJ-SP', completo: 'Tribunal de Justiça do Estado de São Paulo' },
     '09': { nome: 'TJ-MG', completo: 'Tribunal de Justiça do Estado de Minas Gerais' }
   };
@@ -185,25 +166,24 @@ function identifyTribunal(numero) {
   };
 
   return {
-    tribunal: tribunals[tribunal_code] || { nome: 'Tribunal Federal', completo: 'Tribunal Federal' },
+    tribunal: tribunals[tribunal_code] || { nome: 'Tribunal', completo: 'Tribunal Federal' },
     segmento: segmentos[segmento_code] || 'Cível'
   };
 }
 
 function extractPhase(cnj_data) {
-  const status = cnj_data.status || '';
-  if (status.includes('Sentença')) return 'Sentença';
-  if (status.includes('Recurso')) return 'Recurso';
-  if (status.includes('Execução')) return 'Execução';
-  if (status.includes('Distribuição')) return 'Distribuição';
+  const status = (cnj_data.status || '').toLowerCase();
+  if (status.includes('sentença')) return 'Sentença';
+  if (status.includes('recurso')) return 'Recurso';
+  if (status.includes('execução')) return 'Execução';
   return 'Em Andamento';
 }
 
 function extractLastMovement(cnj_data) {
-  if (cnj_data.movimentacoes && cnj_data.movimentacoes.length > 0) {
+  if (cnj_data.movimentacoes && Array.isArray(cnj_data.movimentacoes) && cnj_data.movimentacoes.length > 0) {
     const lastMov = cnj_data.movimentacoes[0];
     return {
-      titulo: lastMov.titulo || 'Última Movimentação',
+      titulo: lastMov.titulo || 'Movimentação',
       descricao: lastMov.descricao || '',
       data: lastMov.data || new Date().toLocaleDateString('pt-BR')
     };
@@ -231,25 +211,21 @@ function extractNextDeadline(cnj_data) {
   return futureDate.toISOString();
 }
 
-function extractDeadlineDescription(cnj_data) {
-  return cnj_data.descricao_prazo || 'Prazo a definir';
-}
-
 function generateNextSteps(cnj_data) {
   const steps = [];
   
-  if (cnj_data.status && cnj_data.status.includes('Distribuição')) {
-    steps.push('Aguardando designação de magistrado');
-    steps.push('Análise inicial da petição');
-  }
-  
-  if (cnj_data.status && cnj_data.status.includes('Andamento')) {
-    steps.push('Acompanhar as movimentações processuais');
-    steps.push('Responder aos prazos estabelecidos');
+  if (cnj_data.status) {
+    if (cnj_data.status.includes('Distribuição')) {
+      steps.push('Aguardando designação de magistrado');
+      steps.push('Análise da petição inicial');
+    } else if (cnj_data.status.includes('Andamento')) {
+      steps.push('Acompanhar movimentações');
+      steps.push('Cumprir prazos estabelecidos');
+    }
   }
 
   if (steps.length === 0) {
-    steps.push('Consulte o portal do tribunal para próximos passos');
+    steps.push('Consulte o tribunal para próximos passos');
   }
 
   return steps;
@@ -257,6 +233,5 @@ function generateNextSteps(cnj_data) {
 
 // ============ LISTEN ============
 app.listen(PORT, () => {
-  console.log(`✅ Backend rodando em porta ${PORT}`);
-  console.log(`🌐 CORS habilitado para todas as origens`);
+  console.log(`✅ Backend rodando na porta ${PORT}`);
 });
